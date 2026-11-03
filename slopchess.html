@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chess vs AI</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<style>
+  :root {
+    --light: #f0d9b5; --dark: #b58863;
+    --sq: min(60px, calc((100svh - 210px) / 8)); /* square size shrinks to fit the window */
+  }
+  html, body { overflow: hidden; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    text-align: center; margin: 0; padding: 14px 20px;
+    background: radial-gradient(ellipse at top, #1a1a1a 0%, #000 70%);
+    color: #e8e8e8; height: 100vh; height: 100svh; box-sizing: border-box;
+  }
+  h2 { font-weight: 600; letter-spacing: 1px; margin: 0 0 6px; font-size: 1.4em; }
+  #controls, #difficulty, #options {
+    display: inline-block; vertical-align: middle; margin: 2px 8px !important;
+    background: #161616; border: 1px solid #2a2a2a; border-radius: 999px;
+    padding: 5px 14px; font-size: 14px; color: #cfcfcf;
+  }
+  #controls label, #difficulty label, #options label { cursor: pointer; }
+  input[type=radio], input[type=checkbox] { accent-color: #b58863; }
+  #wrap { display: inline-flex; gap: 24px; align-items: flex-start; text-align: left; }
+  #main { text-align: center; }
+  #board {
+    display: inline-grid;
+    grid-template-columns: repeat(8, var(--sq));
+    grid-template-rows: repeat(8, var(--sq));
+    border-radius: 6px; overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.7), 0 0 0 2px #2a2a2a;
+  }
+  .sq {
+    width: var(--sq); height: var(--sq);
+    display: flex; align-items: center; justify-content: center;
+    font-size: calc(var(--sq) * 0.8); line-height: 1; cursor: pointer; user-select: none;
+    font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif;
+    transition: background-color 0.15s;
+    position: relative;
+  }
+  .sq svg { filter: drop-shadow(0 3px 2px rgba(0,0,0,0.45)); }
+  .coord {
+    position: absolute; font-family: sans-serif; font-size: calc(var(--sq) * 0.2);
+    font-weight: 700; line-height: 1; pointer-events: none; text-shadow: none;
+  }
+  .coord.rank { top: 3px; left: 4px; }
+  .coord.file { bottom: 3px; right: 4px; }
+  .sq:hover { filter: brightness(1.06); }
+  .light { background-color: var(--light); }
+  .dark { background-color: var(--dark); }
+  .sel { box-shadow: inset 0 0 0 4px #ffd54f; }
+  .hint {
+    background-image: radial-gradient(circle, rgba(0,0,0,0.22) 20%, transparent 22%);
+  }
+  .w { color: #fdfdf7; text-shadow: 0 2px 3px rgba(0,0,0,0.6), 0 0 1px #000; }
+  .b { color: #161616; text-shadow: 0 1px 2px rgba(255,255,255,0.12); }
+  #status {
+    margin: 8px auto; min-height: 1.4em; text-align: center; font-size: 15px; font-weight: 600;
+    display: block; width: 260px; height: 30px; line-height: 22px; box-sizing: border-box;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    padding: 4px 12px; border-radius: 999px;
+    background: #1c1c1c; border: 1px solid #2a2a2a; color: #f2e6c9;
+  }
+  #side > div:first-child {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-bottom: 6px;
+  }
+  #controls label { margin: 0 8px; }
+  #options select {
+    appearance: none; -webkit-appearance: none; -moz-appearance: none;
+    background: #1f1f1f url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23b58863'/%3E%3C/svg%3E") no-repeat right 10px center;
+    color: #eee; border: 1px solid #3a3a3a; border-radius: 999px;
+    padding: 4px 30px 4px 14px; font: inherit; font-size: 14px; cursor: pointer; outline: none;
+  }
+  #options select:hover, #options select:focus { border-color: #b58863; }
+  #options select option { background: #1f1f1f; color: #eee; }
+  #options label { display: inline-flex; align-items: center; gap: 8px; }
+  #side { width: 260px; }
+  #count { color: #fff; }
+  #history {
+    height: calc(var(--sq) * 8 - 24px); overflow-y: auto; background: #141414; border: 1px solid #2a2a2a; border-radius: 10px;
+    padding: 8px; font-size: 14px; line-height: 1.7;
+  }
+  .good { color: #8bc34a; }
+  .mistake { color: #ffb300; }
+  .blunder { color: #ef5350; }
+  .brilliant { color: #4dd0e1; }
+  .better { color: #999; font-size: 12px; }
+  button {
+    margin-top: 4px; padding: 8px 22px; font-size: 15px; font-weight: 600;
+    color: #000; background: linear-gradient(135deg, #f0d9b5, #b58863);
+    border: none; border-radius: 8px; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(181, 136, 99, 0.4);
+    transition: transform 0.1s, box-shadow 0.2s;
+    margin-left: 6px; margin-right: 6px;
+  }
+  button:hover { box-shadow: 0 6px 16px rgba(181, 136, 99, 0.6); }
+
+  /* Portrait phones: the page scrolls and the board uses the full width */
+  @media (max-width: 700px) and (orientation: portrait) {
+    html, body { overflow: auto; }
+    :root { --sq: min(calc((100vw - 40px) / 8), 60px); }
+    body { padding: 10px 8px; height: auto; min-height: 100svh; }
+    h2 { font-size: 1.1em; margin-bottom: 4px; }
+    #controls, #difficulty, #options { margin: 2px 3px !important; padding: 4px 10px; font-size: 13px; }
+    #wrap { flex-direction: column; align-items: center; gap: 8px; }
+    #side { width: calc(var(--sq) * 8); }
+    #history { height: 200px; }
+    #status { font-size: 13px; margin: 4px auto; }
+    button { padding: 7px 16px; font-size: 14px; margin-left: 4px; margin-right: 4px; }
+  }
+</style>
+</head>
+<body>
+<h2>♞ Chess vs AI</h2>
+
+<div id="controls">
+  <label><input type="radio" name="side" value="w" checked> Play White</label>
+  <label><input type="radio" name="side" value="b"> Play Black</label>
+</div>
+<div id="difficulty" style="margin-top:10px;">
+  <label><input type="radio" name="level" value="easy"> Easy</label>
+  <label><input type="radio" name="level" value="medium" checked> Medium</label>
+  <label><input type="radio" name="level" value="hard"> Hard</label>
+</div>
+<div id="options" style="margin-top:10px;">
+  <label><input type="checkbox" id="analysis" checked> Analyze my moves</label>
+  <label>Theme
+    <select id="theme">
+      <option value="classic">Classic</option>
+      <option value="green">Green</option>
+      <option value="blue">Blue</option>
+      <option value="grey">Grey</option>
+    </select>
+  </label>
+</div>
+
+<div id="wrap">
+  <div id="main">
+    <div id="board"></div>
+    <div id="status"></div>
+    <div>
+      <button id="undo">Undo</button>
+      <button id="restart">Restart</button>
+    </div>
+  </div>
+  <div id="side">
+    <div>Move count: <span id="count">0</span></div>
+    <div id="history"></div>
+  </div>
+</div>
+
+<script>
+const PIECE_COLORS = {
+  w: { fill: '#f7f4ea', stroke: '#2b2b2b' },
+  b: { fill: '#2a2a2a', stroke: '#000000' }
+};
+// Side-profile silhouettes, each with a distinct outline so they are easy to tell apart
+const SIMPLE_SHAPES = {
+  // Pawn: small round head on a narrow body
+  p: '<polygon points="22.5,10 27,13 27,18 24,21 27,36 18,36 21,21 18,18 18,13"/>',
+  // Rook: wide square tower with three battlements
+  r: '<polygon points="12,36 12,10 16,10 16,15 19,15 19,10 26,10 26,15 29,15 29,10 33,10 33,36"/>',
+  // Bishop: tall pointed mitre
+  b: '<polygon points="22.5,4 29,16 26,24 31,36 14,36 19,24 16,16"/>',
+  // Knight: horse-head profile with a long snout
+  n: '<polygon points="13,36 14,29 18,26 13,24 8,21 12,16 18,10 24,2 28,8 32,16 32,36"/>',
+  // Queen: five-point crown on a tall body
+  q: '<polygon points="11,36 11,14 16,22 19,10 22.5,20 26,10 29,22 34,14 34,36"/>',
+  // King: body topped by a clear cross
+  k: '<polygon points="14,36 14,22 18,18 18,14 21,14 21,7 19,7 19,4 21,4 21,1 24,1 24,4 26,4 26,7 24,7 24,14 27,14 27,18 31,22 31,36"/>'
+};
+function pieceSVG(type, color) {
+  const c = PIECE_COLORS[color];
+  return '<svg viewBox="0 0 45 45" style="width:80%;height:80%;overflow:visible">' +
+         `<g fill="${c.fill}" stroke="${c.stroke}" stroke-width="1.2" stroke-linejoin="round">` +
+         SIMPLE_SHAPES[type] + '<polygon points="11,36 34,36 34,40 11,40"/></g></svg>';
+}
+const VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+const THEMES = {
+  classic: ['#f0d9b5', '#b58863'],
+  green:   ['#eeeed2', '#769656'],
+  blue:    ['#dee3e6', '#8ca2ad'],
+  grey:    ['#e0e0e0', '#888888']
+};
+// depth = half-moves searched after the AI's move; noise = randomness in choices
+const LEVELS = {
+  easy:   { depth: 0, noise: 1.5 },
+  medium: { depth: 1, noise: 0.3 },
+  hard:   { depth: 2, noise: 0 }
+};
+
+let game = new Chess();
+let playerColor = 'w';
+let level = 'medium';
+let selected = null;
+let busy = false;
+let gen = 0;            // increments on restart/undo so stale AI timers are ignored
+let notes = {};         // ply index -> analysis of the player's move
+let perspective = null; // whose point of view search() scores from (null = AI)
+
+function aiColor() {
+  return playerColor === 'w' ? 'b' : 'w';
+}
+function persp() {
+  return perspective || aiColor();
+}
+
+function applyTheme(name) {
+  const [l, d] = THEMES[name];
+  document.documentElement.style.setProperty('--light', l);
+  document.documentElement.style.setProperty('--dark', d);
+}
+
+function render() {
+  const boardEl = document.getElementById('board');
+  boardEl.innerHTML = '';
+  const flip = playerColor === 'b';
+  const b = game.board();
+  const hints = selected
+    ? game.moves({ square: selected, verbose: true }).map(m => m.to)
+    : [];
+
+  for (let vr = 0; vr < 8; vr++) {
+    for (let vc = 0; vc < 8; vc++) {
+      const r = flip ? 7 - vr : vr;
+      const c = flip ? 7 - vc : vc;
+      const sq = 'abcdefgh'[c] + (8 - r);
+      const p = b[r][c];
+      const d = document.createElement('div');
+      d.className = 'sq ' + ((r + c) % 2 === 0 ? 'light' : 'dark');
+      if (sq === selected) d.classList.add('sel');
+      if (hints.includes(sq)) d.classList.add('hint');
+      if (p) {
+        d.innerHTML = pieceSVG(p.type, p.color);
+        d.classList.add(p.color === 'w' ? 'w' : 'b');
+      }
+      const isLight = (r + c) % 2 === 0;
+      const labelColor = isLight ? 'var(--dark)' : 'var(--light)';
+      if (vc === 0) {
+        const rk = document.createElement('span');
+        rk.className = 'coord rank';
+        rk.style.color = labelColor;
+        rk.textContent = 8 - r;
+        d.appendChild(rk);
+      }
+      if (vr === 7) {
+        const fl = document.createElement('span');
+        fl.className = 'coord file';
+        fl.style.color = labelColor;
+        fl.textContent = 'abcdefgh'[c];
+        d.appendChild(fl);
+      }
+      d.onclick = () => onSquareClick(sq);
+      boardEl.appendChild(d);
+    }
+  }
+
+  // Side can only be changed before the first move
+  const started = game.history().length > 0;
+  document.querySelectorAll('input[name=side]').forEach(input => {
+    input.disabled = started;
+    input.checked = input.value === playerColor;
+  });
+
+  renderHistory();
+}
+
+function renderHistory() {
+  const h = game.history();
+  const el = document.getElementById('history');
+  el.innerHTML = '';
+  for (let i = 0; i < h.length; i += 2) {
+    const row = document.createElement('div');
+    let html = `<span style="color:#888">${i / 2 + 1}.</span> ` + moveHTML(i, h[i]);
+    if (i + 1 < h.length) html += ' &nbsp;' + moveHTML(i + 1, h[i + 1]);
+    row.innerHTML = html;
+    el.appendChild(row);
+  }
+  el.scrollTop = el.scrollHeight;
+  document.getElementById('count').textContent = h.length;
+}
+
+function moveHTML(idx, san) {
+  const n = notes[idx];
+  let s = san;
+  if (n) {
+    s += ` <span class="${n.cls}">${n.label}</span>`;
+    if (n.better) s += ` <span class="better">(better: ${n.better})</span>`;
+  }
+  return s;
+}
+
+function updateStatus() {
+  let text;
+  if (game.in_checkmate()) {
+    text = 'Checkmate. ' + (game.turn() === playerColor ? 'The AI wins.' : 'You win!');
+  } else if (game.in_stalemate()) {
+    text = 'Stalemate.';
+  } else if (game.in_draw()) {
+    text = 'Draw.';
+  } else if (busy) {
+    text = 'AI is thinking...';
+  } else {
+    text = (game.turn() === playerColor ? 'Your move' : 'AI to move') +
+           (game.in_check() ? ' (check!)' : '');
+  }
+  document.getElementById('status').textContent = text;
+}
+
+function onSquareClick(sq) {
+  if (busy || game.game_over() || game.turn() !== playerColor) return;
+
+  if (selected) {
+    if (sq === selected) {
+      selected = null;
+      render();
+      return;
+    }
+    const legal = game.moves({ square: selected, verbose: true }).find(m => m.to === sq);
+    if (legal) {
+      const ply = game.history().length;
+      notes[ply] = document.getElementById('analysis').checked ? analyzeMove(legal) : null;
+      game.move({ from: selected, to: sq, promotion: 'q' });
+      selected = null;
+      render();
+      updateStatus();
+      if (!game.game_over()) {
+        busy = true;
+        updateStatus();
+        const myGen = gen;
+        setTimeout(() => { if (myGen === gen) aiMove(); }, 250);
+      }
+      return;
+    }
+  }
+
+  const piece = game.get(sq);
+  selected = (piece && piece.color === playerColor) ? sq : null;
+  render();
+}
+
+function aiMove() {
+  const m = bestMove();
+  if (m) {
+    const ply = game.history().length;
+    game.move({ from: m.from, to: m.to, promotion: m.promotion });
+    notes[ply] = null;
+  }
+  busy = false;
+  render();
+  updateStatus();
+}
+
+// Scores every legal move for the player and classifies the one played
+function analyzeMove(played) {
+  const saved = perspective;
+  perspective = playerColor;
+  const scores = game.moves({ verbose: true }).map(mv => {
+    game.move({ from: mv.from, to: mv.to, promotion: mv.promotion });
+    const s = search(1, -Infinity, Infinity);
+    game.undo();
+    return { mv, s };
+  });
+  perspective = saved;
+
+  scores.sort((a, b) => b.s - a.s);
+  const key = played.from + played.to;
+  const playedS = scores.find(x => x.mv.from + x.mv.to === key &&
+                                   (!x.mv.promotion || x.mv.promotion === 'q')).s;
+  const bestS = scores[0].s;
+  const loss = bestS - playedS;
+  const gap = scores.length > 1 ? bestS - scores[1].s : Infinity;
+
+  if (loss < 0.05) {
+    return gap >= 1.5
+      ? { label: 'Brilliant', cls: 'brilliant', better: null }
+      : { label: 'Best', cls: 'good', better: null };
+  }
+  const better = scores[0].mv.san;
+  if (loss < 0.5) return { label: 'Good', cls: 'good', better };
+  if (loss < 1.5) return { label: 'Mistake', cls: 'mistake', better };
+  return { label: 'Blunder', cls: 'blunder', better };
+}
+
+// Material-only evaluation from the perspective side's point of view
+function evaluate() {
+  let score = 0;
+  const side = persp();
+  for (const row of game.board()) {
+    for (const p of row) {
+      if (!p) continue;
+      score += (p.color === side ? VALUES[p.type] : -VALUES[p.type]);
+    }
+  }
+  return score;
+}
+
+function search(depth, alpha, beta) {
+  if (game.game_over()) {
+    if (game.in_checkmate()) {
+      return game.turn() === persp() ? -10000 : 10000;
+    }
+    return 0;
+  }
+  if (depth === 0) return evaluate();
+
+  const maximizing = game.turn() === persp();
+  const moves = game.moves({ verbose: true });
+  let best = maximizing ? -Infinity : Infinity;
+
+  for (const m of moves) {
+    game.move({ from: m.from, to: m.to, promotion: m.promotion });
+    const s = search(depth - 1, alpha, beta);
+    game.undo();
+    if (maximizing) {
+      best = Math.max(best, s);
+      alpha = Math.max(alpha, s);
+    } else {
+      best = Math.min(best, s);
+      beta = Math.min(beta, s);
+    }
+    if (beta <= alpha) break;
+  }
+  return best;
+}
+
+function bestMove() {
+  const { depth, noise } = LEVELS[level];
+  const moves = game.moves({ verbose: true });
+  let best = null;
+  let bestScore = -Infinity;
+  for (const m of moves) {
+    game.move({ from: m.from, to: m.to, promotion: m.promotion });
+    const s = search(depth, -Infinity, Infinity) + Math.random() * noise;
+    game.undo();
+    if (s > bestScore) {
+      bestScore = s;
+      best = m;
+    }
+  }
+  return best;
+}
+
+function undo() {
+  if (busy || game.history().length === 0) return;
+  // Step back past the AI's reply to your last move
+  do { game.undo(); } while (game.history().length && game.turn() !== playerColor);
+  for (const k of Object.keys(notes)) {
+    if (+k >= game.history().length) delete notes[k];
+  }
+  selected = null;
+  gen++;
+  busy = false;
+  render();
+  updateStatus();
+  if (game.turn() !== playerColor) {
+    busy = true;
+    updateStatus();
+    const myGen = gen;
+    setTimeout(() => { if (myGen === gen) aiMove(); }, 300);
+  }
+}
+
+function newGame() {
+  gen++;
+  game = new Chess();
+  notes = {};
+  selected = null;
+  busy = false;
+  render();
+  updateStatus();
+  if (playerColor === 'b') {
+    busy = true;
+    updateStatus();
+    const myGen = gen;
+    setTimeout(() => { if (myGen === gen) aiMove(); }, 300);
+  }
+}
+
+document.querySelectorAll('input[name=side]').forEach(input => {
+  input.addEventListener('change', () => {
+    if (game.history().length > 0) return;
+    playerColor = input.value;
+    newGame();
+  });
+});
+
+document.querySelectorAll('input[name=level]').forEach(input => {
+  input.addEventListener('change', () => { level = input.value; });
+});
+
+document.getElementById('theme').addEventListener('change', e => applyTheme(e.target.value));
+document.getElementById('undo').addEventListener('click', undo);
+document.getElementById('restart').addEventListener('click', newGame);
+
+applyTheme('classic');
+newGame();
+</script>
+</body>
+</html>
